@@ -1,0 +1,156 @@
+link: https://help.sap.com/doc/saphelp_nw73ehp1/7.31.19/en-US/48/d5d6b0982b424be10000000a421937/content.htm?no_cache=true
+
+List of the Pseudo Header FieldsLocate this document in the navigation structure
+Use
+Header Field Name
+
+Description
+
+~content_data
+
+In the case of multipart entities (for example, when uploading files from HTML forms), contains the body of the non-binary multipart segment.
+
+~content_disposition
+
+In the case of multipart entities, for example, when uploading files from HTML forms, contains the content disposition (segment type, segment name (filename of the segment)).
+
+Note
+Do not change this value! You can use method GET_HEADER_FIELD() to query the value.
+
+~content_filename
+
+In the case of multipart entities when uploading files from HTML forms, contains the file name as it was entered in the HTML form or selected from the choose file dialog.
+
+Note
+Do not change this value! You can use method GET_HEADER_FIELD() to query the value.
+
+~content_name
+
+In the case of multipart entities for HTML forms, contains the name of the input field or HTML control. The value of this field or control can be obtained from ~content_data for the same entity
+
+Note
+Do not change this value! You can use method GET_HEADER_FIELD() to query the value.
+
+~path
+
+Contains the escaped path name from the request URI or URL (without query string), for example, /sap(XYasfduy===)/bc/bsp/sap/it00/default.htm from /sap(XYasfduy===)/bc/bsp/sap/it00/default.htm?x=1&y=2. Compare with ~path_translated and ~path_translated_ expand.
+
+~path_info
+
+Within a HTTP request handler (see interface IF_HTTP_EXTENSION), contains the URL suffix that comes after the URL prefix. The URL prefix is used to execute the request handler. This results in:
+
+~script_name+ ~path_info= ~path_translated
+
+Example
+If the request handler is registered under the URL /sap/bc/bsp (see transaction SICF) and ~path_info has the value /sap/it00/default.htm for the request URL /sap/bc/bsp/sap/it00/default.htm.
+
+~path_info_expanded
+
+Contains the same information as ~path_info when the path does not use an alias. If an alias is used, ~path_info_expanded gets the internal representation of the path information. Within a HTTP request handler (see interface IF_HTTP_EXTENSION), contains the URL suffix that comes after the expanded URL prefix. The URL prefix is used to execute the request handler. This results in: ~script_name_expanded+ ~path_info_expanded= ~path_translated_expanded
+
+Example
+If the request handler is registered under the URL /sap/bc/bsp (see transaction SICF) and the variable has the value /sap/it00/default.htm for the request URL /sap/bc/bsp/sap/it00/default.htm.
+
+If an internal or an external alias, for example, myApp, points to /sap/bc/bsp/sap, and if a request using this alias is used to gain access, then this variable is set to the value /sap/it00/default.htm (see ~path_info). The request would then read /myApp/it00/default.htm.
+
+~PATH_TRANSLATED
+
+Contains the unescaped path name from the request URI or URL (without query string), for example, /sap/bc/bsp/sap/it00/default.htm from /sap(XYasfduy===)/bc/bsp/sap/it00/default.htm?x=1&y=2.
+
+Note
+Compare with ~path and ~path_translated_expanded.
+
+~path_translated_expanded
+
+Contains the expanded, unescaped path name that is derived from the request URI or URL when the internal or external aliases are resolved.
+
+Note
+If an internal or an external alias, for example, myApp, points to /sap/bc/bsp, and if a request using this alias is used to gain access, then this variable is set to the value /sap/bc/bsp/sap/it00/default.htm. The request would then read /myApp(XZasfduz===)/sap/it00/default.htm.
+
+~query_string
+
+Contains the URL-escaped query string from the request URI of a HTTP request, that is, the string part after the first question mark, for example, name=Walt+Whitman&street=Oxford+Street from http://server:8080/sap/bc/ping? name=Walt+Whitman&street=Oxford+Street.
+
+Note
+If you want to change the query string, set the individual form fields. To do this, use methods SET_FORMFIELD or SET_FORMFIELDS of interface IF_HTTP_ENTITY.
+
+~remote_addr
+
+Contains the IP address of the HTTP client if the server is accessed without a HTTP proxy, otherwise contains the IP address of the last proxy in the chain of proxies outside the server.
+
+~request_line
+
+Contains the complete HTTP request line of the request, for example, GET /sap/bc/ping?param=2 HTTP/1.1"
+
+Note
+If you want to make changes to the request line, use the corresponding methods for manipulating the individual components of the request line.
+
+~request_method
+
+Contains the HTTP method from the HTTP request line of the request, for example, GET, POST or PUT.
+
+~request_uri
+
+Contains the complete URI from the HTTP request line of the request, for example, /sap/bc/ping?param=2 from GET /sap/bc/ping?param=2 HTTP/1.1.
+
+Note
+If you want to make changes to the request URI, use the corresponding methods for manipulating the individual components of the request line.
+
+~response_line
+
+Contains the complete HTTP response line (status line) of a received HTTP response, for example, HTTP/1.1 200 OK.
+
+Note
+If you want to make changes to the response line, use the corresponding methods for manipulating the individual components of the response line.
+
+~script_name
+
+Within a HTTP request handler (see interface IF_HTTP_EXTENSION), contains the URL prefix that is used to execute the request handler.
+
+Example
+If the request handler is registered under the URL "/sap/bc/bsp" (see transaction SICF) and the variable has the value "/sap/bc/bsp" for the request URL "/sap/bc/bsp/sap/it00/default.htm".
+
+If an internal or an external alias, for example, myApp, points to /sap/bc/bsp, and if a request using this alias is used to gain access, then this variable is set to the value /myApp (see ~script_name_expanded). The request would then read /myApp/sap/it00/default.htm.
+
+~script_name_expanded
+
+Within a HTTP request handler (see interface IF_HTTP_EXTENSION), contains the URL prefix that is used to execute the request handler.
+
+If the request handler is registered under the URL "/sap/bc/bsp" (see transaction SICF) and the variable has the value "/sap/bc/bsp" for the request URL "/sap/bc/bsp/sap/it00/default.htm".
+
+If an internal or an external alias, for example, myApp, points to /sap/bc/bsp, and if a request using this alias is used to gain access, then this variable is not set to the value /myApp, unlike in the case of the variable ~script_name, but is set to the expanded prefix /sap/bc/bsp. The request would then read /myApp/sap/it00/default.htm.
+
+~server_name
+
+Contains the name of the server that received the request.
+
+~server_port
+
+Contains the number of the port on which the request came in.
+
+~server_protocol
+
+Contains the protocol from the HTTP request line, for example, HTTP/1.0 or HTTP/1.1.
+
+~status_code
+
+In the case of a HTTP response (client), contains the HTTP status code, for example, 200 (OK).
+
+Note
+Do not use method SET_HEADER_FIELD() to set the HTTP status. Use method SET_STATUS() of interface IF_HTTP_RESPONSE.
+
+~status_reason
+
+In the case of a HTTP response (client), contains the description text of the HTTP status code, for example, OK or Not found (401). The interface IF_HTTP_STATUS contains a list of all status texts in the form of constants.
+
+Note
+Do not use method SET_HEADER_FIELD() to set the HTTP status. Use method SET_STATUS() of interface IF_HTTP_RESPONSE.
+
+~uri_scheme
+
+Contains the URI scheme of the URL, for example, "http" or "https".
+
+The field contains the string that is at the beginning of the URL before the "://". This must not be the protocol that is used when working with proxies.
+
+Note
+It is not recommended that you use this field to differentiate between HTTP and HTTPS! If you want to query whether it is an HTTPS connection, use attribute SSL_ACTIVE of the server object (see also IF_HTTP_SERVER).
