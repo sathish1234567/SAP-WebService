@@ -1,0 +1,5 @@
+1. check the port with telent, either port has opened ornot .
+2. SMICM tcode --> trace of the services if it is failed to hit external system.
+--> check the http/https server ports.
+3. check the ssl certificate using STRUST tcode.
+4. check the cipher suite parameters <-- if you will get the error in SMICM tcode.
