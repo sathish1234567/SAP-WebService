@@ -1,4 +1,6 @@
-Show TOC
+
+https://help.sap.com/doc/saphelp_nw73ehp1/7.31.19/en-US/48/d4028d1904154ee10000000a421937/content.htm?no_cache=true 
+
 IF_HTTP_ENTITYLocate this document in the navigation structure
 Definition
 This interface consists of the methods explained below and is included in the interfaces IF_HTTP_RESPONSE and IF_HTTP_REQUEST. For the attributes of the interface, see the section after the methods.
