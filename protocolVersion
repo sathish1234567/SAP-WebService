@@ -1,0 +1,1 @@
+lo_http_client->request->set_version( if_http_request=>co_protocol_version_1_1 ).
