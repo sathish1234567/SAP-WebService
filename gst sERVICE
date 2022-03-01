@@ -1,0 +1,729 @@
+FUNCTION ZFM_EINVOICE_GENERATE_API.
+*"----------------------------------------------------------------------
+*"*"Local Interface:
+*"  IMPORTING
+*"     VALUE(IM_TOKEN) TYPE  STRING
+*"     VALUE(IM_API_HDR) TYPE  ZTT_EINV_API_STRUCT
+*"     VALUE(IM_API_ITM) TYPE  ZTT_EINV_API_STRUCT_ITM
+*"     VALUE(IM_API_DWN) TYPE  XFELD OPTIONAL
+*"  EXPORTING
+*"     VALUE(EX_RETURN) TYPE  STRING
+*"     VALUE(EX_INVREF) TYPE  ZTT_J_1IG_INVREFNUM
+*"     VALUE(EX_MESSAGES) TYPE  BAPIRET2_T
+*"     VALUE(EX_ERROR) TYPE  STRING
+*"     VALUE(EX_EINV_DETAILS) TYPE  ZTT_EINV_DETAILS
+*"----------------------------------------------------------------------
+
+  TYPES:BEGIN OF TY_MESSAGE,
+          ACKNO         TYPE STRING,
+          ACKDT         TYPE STRING,
+          IRN           TYPE STRING,
+          SIGNEDINVOICE TYPE STRING,
+          SIGNEDQRCODE  TYPE STRING,
+          EWBNO         TYPE STRING,
+          EWBDT         TYPE STRING,
+          EWBVALIDTILL  TYPE STRING,
+          QRCODEURL     TYPE STRING,
+          EINVOICEPDF   TYPE STRING,
+          STATUS        TYPE STRING,
+          ALERT         TYPE STRING,
+          ERROR         TYPE STRING,
+        END OF TY_MESSAGE,
+        BEGIN OF TY_OUTPUT,
+          MESSAGE      TYPE TY_MESSAGE,
+          ERRORMESSAGE TYPE STRING,
+          INFODTLS     TYPE STRING,
+          STATUS       TYPE STRING,
+          CODE         TYPE STRING,
+        END OF TY_OUTPUT.
+
+  DATA:LS_OUTPUT TYPE TY_OUTPUT.
+
+  DATA LW_MESSAGE TYPE BAPIRET2.
+  DATA:LT_API_HDR TYPE STANDARD TABLE OF ZST_EINV_API_STRUCT,
+       LW_API_HDR TYPE ZST_EINV_API_STRUCT.
+
+  DATA:LT_API_ITM TYPE STANDARD TABLE OF ZST_EINV_API_STRUCT_ITM,
+       LW_API_ITM TYPE ZST_EINV_API_STRUCT_ITM.
+
+  DATA : LV_EW  TYPE STRING,
+         LV_EW1 TYPE STRING.
+  DATA : LV_EW2      TYPE STRING,
+         LV_EW3      TYPE STRING,
+         LV_EW4      TYPE STRING,
+         LV_EW5      TYPE STRING,
+         LV_EW6      TYPE STRING,
+         LV_EW7      TYPE STRING,
+         LV_EW8      TYPE STRING,
+         LV_EW9      TYPE STRING,
+         LV_EW10     TYPE STRING,
+         LV_IRN      TYPE STRING,
+         ALERT       TYPE STRING,
+         HTTP_STATUS TYPE STRING.
+
+  DATA: "wa_einv TYPE zeinv_gen,
+        LV_DATE TYPE DATS.
+
+  DATA : LC_DOC TYPE STRING.
+
+  DATA: LO_HTTP_CLIENT     TYPE REF TO IF_HTTP_CLIENT,
+        LV_SERVICE         TYPE STRING,
+        LV_RESULT          TYPE STRING,
+        LO_IXML            TYPE REF TO IF_IXML,
+        LO_STREAMFACTORY   TYPE REF TO IF_IXML_STREAM_FACTORY,
+        LO_ISTREAM         TYPE REF TO IF_IXML_ISTREAM,
+        LO_DOCUMENT        TYPE REF TO IF_IXML_DOCUMENT,
+        LO_PARSER          TYPE REF TO IF_IXML_PARSER,
+        LO_WEATHER_ELEMENT TYPE REF TO IF_IXML_ELEMENT,
+        LO_WEATHER_NODES   TYPE REF TO IF_IXML_NODE_LIST,
+        LO_CURR_NODE       TYPE REF TO IF_IXML_NODE,
+        LV_VALUE           TYPE STRING,
+        LV_NODE_LENGTH     TYPE I,
+        LV_NODE_INDEX      TYPE I,
+        LV_NODE_NAME       TYPE STRING,
+        LV_NODE_VALUE      TYPE STRING.
+  DATA : LO_REST_CLIENT TYPE REF TO IF_REST_CLIENT,
+         LO_REST_ENTITY TYPE REF TO IF_REST_ENTITY.
+  DATA: LS_MATCH        TYPE MATCH_RESULT,
+        LV_OFFSET_START TYPE SY-TABIX,
+        LV_OFFSET_END   TYPE SY-TABIX,
+        LV_STRING       TYPE STRING,
+        LV_MODEL_CODE   TYPE CHAR12,
+        LV_LENGTH       TYPE SY-TABIX,
+        LV_POST         TYPE  STRING,
+        LC_STRING       TYPE STRING,
+        LV_TOKEN        TYPE STRING,
+        LV_LENGTH1      TYPE STRING.
+
+  DATA LR_REST_EXCEPTION TYPE REF TO CX_REST_CLIENT_EXCEPTION.
+
+  DATA:LW_INREF          TYPE  J_1IG_INVREFNUM,
+       LW_ZTEINV_DETAILS TYPE ZTEINV_DETAILS,
+       LW_CONFIG         TYPE ZTEINV_API,
+       LV_URL            TYPE STRING.
+  DATA:IT_TEMP TYPE TABLE OF ZST_EINV_API_STRUCT_ITM.
+
+
+  CLEAR EX_MESSAGES.
+
+  LV_TOKEN = IM_TOKEN.
+
+  LT_API_HDR = IM_API_HDR.
+  LT_API_ITM = IM_API_ITM.
+
+  SORT  LT_API_HDR BY DOCUMENT_NUMBER.
+  SORT  LT_API_ITM BY DOCUMENT_NUMBER.
+
+
+  SELECT SINGLE * FROM ZTEINV_API INTO LW_CONFIG WHERE APIID = 'EINVGEN'.
+  IF SY-SUBRC IS INITIAL.
+    LV_URL = LW_CONFIG-APIURI.
+  ENDIF.
+
+
+  LOOP AT LT_API_HDR INTO  LW_API_HDR.
+
+    LV_DOC = LW_API_HDR-DOCUMENT_NUMBER.
+    REPLACE ALL OCCURRENCES OF  '"' IN LV_DOC WITH SPACE.
+    CLEAR LV_POST.
+
+    CONCATENATE : '{'
+     '"access_token":' LV_TOKEN','
+                      '"user_gstin":' LW_API_HDR-USER_GSTIN ','
+                      '"data_source": "erp",'
+                      INTO  LV_POST SEPARATED BY ' ' .
+
+    CONCATENATE : LV_POST '"transaction_details":' '{'
+                         '"supply_type":' LW_API_HDR-SUPPLY_TYPE ',' "B2B",'
+                         '"charge_type":' LW_API_HDR-CHARGE_TYPE ',' "N",'
+                         '"ecommerce_gstin":' LW_API_HDR-ECOMMERCE_GSTIN  ""'
+                         '},' INTO  LV_POST SEPARATED BY ' '.
+
+    CONCATENATE : LV_POST '"document_details":' '{'
+                          '"document_type":'  LW_API_HDR-DOCUMENT_TYPE ',' "INV"' ','   Y
+                          '"document_number":' LW_API_HDR-DOCUMENT_NUMBER ','          " Y
+                          '"document_date":' LW_API_HDR-DOCUMENT_DATE "09/03/2020"'     Y
+                          '},' INTO LV_POST SEPARATED BY ' '.
+
+    IF LW_API_HDR-PINCODE_S IS INITIAL.
+      LW_API_HDR-PINCODE_S = '0'.
+    ENDIF.
+
+    CONCATENATE : LV_POST  '"seller_details":' '{'
+                           '"gstin":' LW_API_HDR-GSTIN_S ','
+                           '"legal_name":' LW_API_HDR-LEGAL_NAME_S ','
+                           '"trade_name":' LW_API_HDR-TRADE_NAME_S ','
+                           '"address1":' LW_API_HDR-ADDRESS1_S ','"VILA",'                           Y
+                           '"address2":' LW_API_HDR-ADDRESS2_S ',' "VILA",'
+                           '"location":' LW_API_HDR-LOCATION_S ',' "Noida",'                         Y
+                           '"pincode":' LW_API_HDR-PINCODE_S ','" 201301 ','                         Y
+                           '"state_code":' LW_API_HDR-STATE_CODE_S ',' "UTTAR PRADESH",'             Y
+*                           '"phone_number":' lw_api_hdr-phone_number_s ',' "9876543231,'
+                           '"email":' LW_API_HDR-EMAIL_S "abc@xyz.com"'
+                           '},' INTO LV_POST SEPARATED BY ' '.
+
+
+    IF LW_API_HDR-PINCODE_B IS INITIAL.
+      LW_API_HDR-PINCODE_B = '0'.
+    ENDIF.
+
+    CONCATENATE : LV_POST '"buyer_details":' '{'
+                          '"gstin":' LW_API_HDR-GSTIN_B ',' "05AAAPG7885R002",'                  Y
+                          '"legal_name":' LW_API_HDR-LEGAL_NAME_B ',' "MastersIndia UT",'        Y
+                          '"trade_name":' LW_API_HDR-TRADE_NAME_B ',' "MastersIndia UT",'
+                          '"address1":' LW_API_HDR-ADDRESS1_B ',' "KILA",'                       Y
+                          '"address2":' LW_API_HDR-ADDRESS2_B ',' "KILA",'
+                          '"location":' LW_API_HDR-LOCATION_B ',' "Nainital",'                   Y
+                          '"pincode":' LW_API_HDR-PINCODE_B  ',' "110010,'
+                          '"place_of_supply":' LW_API_HDR-PLACE_OF_SUPPLY_B ',' "9",'          Y
+                          '"state_code":' LW_API_HDR-STATE_CODE_B ',' "UTTARAKHAND",'
+*                          '"phone_number":' lw_api_hdr-phone_number_b ',' " ,'
+                          '"email":'  LW_API_HDR-EMAIL_B  "abc@xyz.com"'
+                          '},' INTO LV_POST SEPARATED BY ' '.
+
+
+    IF LW_API_HDR-PINCODE_D IS INITIAL.
+      LW_API_HDR-PINCODE_D = '0'.
+    ENDIF.
+
+*    CONCATENATE : LV_POST '"dispatch_details":' '{'
+*                          '"company_name":' LW_API_HDR-COMAPNY_NAME_D ',' "MastersIndia UP",'     Y
+*                          '"address1":' LW_API_HDR-ADDRESS1_D ',' "VILA",'                        Y
+*                          '"address2":' LW_API_HDR-ADDRESS2_D ',' "VILA",'
+*                          '"location":' LW_API_HDR-LOCATION_D ',' "Noida",'                      Y
+*                          '"pincode":' LW_API_HDR-PINCODE_D ',' "201301,'                        Y
+*                          '"state_code":' LW_API_HDR-STATE_CODE_D  "UTTAR PRADESH"'               Y
+*                          '},' INTO LV_POST SEPARATED BY ' '.
+
+
+    IF LW_API_HDR-PINCODE_SH IS INITIAL.
+      LW_API_HDR-PINCODE_SH = '0'.
+    ENDIF.
+
+
+    IF LW_API_HDR-SUPPLY_TYPE   NE '"EXPWP"' AND LW_API_HDR-SUPPLY_TYPE NE '"EXPWOP"'.
+      CONCATENATE : LV_POST '"ship_details":' '{'
+                            '"gstin":' LW_API_HDR-GSTIN_SH ',' "05AAAPG7885R002",'
+                            '"legal_name":' LW_API_HDR-LEGAL_NAME_SH ','  "MastersIndia UT",'       Y
+                            '"trade_name":' LW_API_HDR-TRADE_NAME_SH ',' "MastersIndia UT",'
+                            '"address1":' LW_API_HDR-ADDRESS1_SH ',' "KILA",'                        Y
+                            '"address2":' LW_API_HDR-ADDRESS2_SH ','  "KILA",'
+                            '"location":' LW_API_HDR-LOCATION_SH ',' "Nainital",'                Y
+                            '"pincode":' LW_API_HDR-PINCODE_SH ',' "110010,'                       Y
+                            '"state_code":' LW_API_HDR-STATE_CODE_SH  "UTTARAKHAND"'               Y
+                            '},' INTO LV_POST SEPARATED BY ' '.
+
+
+    ENDIF.
+
+    IF LW_API_HDR-SUPPLY_TYPE   = '"EXPWP"' OR LW_API_HDR-SUPPLY_TYPE = '"EXPWOP"'.
+
+      CONCATENATE : LV_POST '"export_details":' '{'
+                            '"ship_bill_number":' LW_API_HDR-SHIP_BILL_NUMBER ',' "qwe1233",'
+                            '"ship_bill_date":' LW_API_HDR-SHIP_BILL_DATE ',' "09/03/2020",'
+                            '"country_code":' LW_API_HDR-COUNTRY_CODE ',' "IN",'
+                            '"foreign_currency":' LW_API_HDR-FOREIGN_CURRENCY ',' "INR",'
+                            '"refund_claim":' LW_API_HDR-REFUND_CLAIM ',' "N",'
+                            '"port_code":' LW_API_HDR-PORT_CODE "232434"'
+                            '},'  INTO LV_POST SEPARATED BY ' '.
+
+    ENDIF.
+
+*    CONCATENATE : LV_POST '"payment_details": {'
+*                          '"bank_account_number":' LW_API_HDR-BANK_ACCOUNT_NUMBER ',' "Account Details",'
+*                          '"paid_balance_amount":' LW_API_HDR-PAID_BALANCE_AMOUNT ',' " 100,'
+*                          '"credit_days":' LW_API_HDR-CREDIT_DAYS ',' " 2,'
+*                          '"credit_transfer":' LW_API_HDR-CREDIT_TRANSFER ',' "credit_transfer",'
+*                          '"direct_debit":' LW_API_HDR-DIRECT_DEBIT ',' "Direct Debit",'
+*                          '"branch_or_ifsc":' LW_API_HDR-BRANCH_OR_IFSC ',' "KKK000180",'
+*                          '"payment_mode":' LW_API_HDR-PAYMENT_MODE ',' "CASH",'
+*                          '"payee_name":' LW_API_HDR-PAYEE_NAME ',' "Payee Name",'
+*                          '"payment_due_date":' LW_API_HDR-PAYMENT_DUE_DATE ',' "09/03/2020",'
+*                          '"payment_instruction":' LW_API_HDR-PAYMENT_INSTRUCTION ',' "Payment Instruction",'
+*                          '"payment_term":' LW_API_HDR-PAYMENT_TERM "Terms of Payment"'
+*                          '},' INTO LV_POST SEPARATED BY ' '.
+
+    IF LW_API_HDR-DOCUMENT_TYPE EQ '"CRN"' OR LW_API_HDR-DOCUMENT_TYPE EQ '"DBN"'.
+
+*      CONCATENATE : LV_POST '"reference_details":' '{'
+*                            '"invoice_remarks":' LW_API_HDR-INVOICE_REMARKS ',' "Invoice Remarks",'          y
+*                            '"document_period_details":'  '{'
+*                            '"invoice_period_start_date":' LW_API_HDR-INVOICE_PERIOD_START_DATE ',' "2020-02-01",'                y
+*                            '"invoice_period_end_date":' LW_API_HDR-INVOICE_PERIOD_END_DATE ',' "2020-02-30",'                       y
+*                            '}'
+*                            '"preceding_document_details":' '[' '{'
+*                            '"reference_of_original_invoice":' LW_API_HDR-REFERENCE_OF_ORIGINAL_INVOICE ',' "CFRT/0006",'    y
+*                            '"preceding_invoice_date":' LW_API_HDR-PRECEDING_INVOICE_DATE ','  "09/03/2020",'                 y
+*                            '"other_reference":' LW_API_HDR-OTHER_REFERENCE "2334"'                                           y
+**                            '}' '}' "Added by Muthu ITZ [01.10.2020 ]
+**                            '],'   INTO LV_POST SEPARATED BY ' '.
+*                            '}' '],' "Added by Muthu ITZ [01.10.2020 ]
+*                           '}'   INTO LV_POST SEPARATED BY ' '.
+
+    ELSE.
+
+*      CONCATENATE : LV_POST '"reference_details":' '{'
+*                            '"invoice_remarks":' LW_API_HDR-INVOICE_REMARKS ',' "Invoice Remarks",'          y
+*                            '"document_period_details":'  '{'
+*                            '"invoice_period_start_date":' LW_API_HDR-INVOICE_PERIOD_START_DATE ',' "2020-02-01",'                y
+*                            '"invoice_period_end_date":' LW_API_HDR-INVOICE_PERIOD_END_DATE  "2020-02-30",'                       y
+*                            '}'
+*                            '},' INTO LV_POST SEPARATED BY ' '.
+
+    ENDIF.
+
+*    CONCATENATE : lv_post '"contract_details":' '[' '{'
+*                          '"receipt_advice_number":' lw_api_hdr-receipt_advice_number ',' "aaa",'                                 y
+*                          '"receipt_advice_date":' lw_api_hdr-receipt_advice_date ',' "09/03/2020",'                              y
+*                          '"batch_reference_number":' lw_api_hdr-batch_reference_number ',' "2334",'                              y
+*                          '"contract_reference_number":' lw_api_hdr-contract_reference_number ',' "2334",'                        y
+*                          '"other_reference":' lw_api_hdr-other_reference_c ',' "2334" ,'                                         y
+*                          '"project_reference_number":' lw_api_hdr-project_reference_number ',' "2334",'                          y
+*                          '"vendor_po_reference_number":' lw_api_hdr-vendor_po_reference_number ',' "233433454545",'              y
+*                          '"vendor_po_reference_date":' lw_api_hdr-vendor_po_reference_date "09/03/2020"'                         y
+*                          '}'
+*                          ']'
+*                          '},'  INTO lv_post SEPARATED BY ' '.
+
+*    CONCATENATE: lv_post '"additional_document_details":' '['  '{'
+*                         '"supporting_document_url":' lw_api_hdr-supporting_document_url ',' "",'
+*                         '"supporting_document":' lw_api_hdr-supporting_document ',' "india",'
+*                         '"additional_information":' lw_api_hdr-additional_information  "',' "india"' " changed
+*                         '}'
+*                         '],'  INTO lv_post SEPARATED BY ' '.
+
+    CONCATENATE : LV_POST '"value_details":' '{'
+                          '"total_assessable_value":' LW_API_HDR-TOTAL_ASSESSABLE_VALUE ',' "1,'                    y
+                          '"total_cgst_value":' LW_API_HDR-TOTAL_CGST_VALUE ',' " 0,'
+                          '"total_sgst_value":' LW_API_HDR-TOTAL_SGST_VALUE ',' "0,'
+                          '"total_igst_value":' LW_API_HDR-TOTAL_IGST_VALUE ',' " 0.01,'
+                          '"total_cess_value":' LW_API_HDR-TOTAL_CESS_VALUE ',' "0,'
+                          '"total_cess_nonadvol_value":' LW_API_HDR-TOTAL_CESS_NONADVOL_VALUE ','" 0,'
+                          '"total_other_charge":' LW_API_HDR-TOTAL_OTHER_CHARGE ','
+                          '"total_invoice_value":' LW_API_HDR-TOTAL_INVOICE_VALUE ',' "1.01,'                      y
+                          '"total_cess_value_of_state":' LW_API_HDR-TOTAL_CESS_VALUE_OF_STATE ',' "0,'
+                          '"round_off_amount":' LW_API_HDR-ROUND_OFF_AMOUNT ',' "0,'
+                          '"total_invoice_value_additional_currency":' LW_API_HDR-TOTAL_INVOICE_VALUE_ADDITIONAL " 0'
+                          '},'  INTO LV_POST SEPARATED BY ' '.
+
+*    CONCATENATE : lv_post '"ewaybill_details":' '{'
+*                          '"transporter_id":' lw_api_hdr-transporter_id ',' "05AAABB0639G1Z8",'          y
+*                          '"transporter_name":' lw_api_hdr-transporter_name ',' "Jay Trans",'            y
+*                          '"transportation_mode":' lw_api_hdr-transportation_mode ',' "1",'                        y
+*                          '"transportation_distance":' lw_api_hdr-transportation_distance ',' "120",'               y
+*                          '"transporter_document_number":' lw_api_hdr-transporter_document_number ',' "1230",'    y
+*                          '"transporter_document_date":' lw_api_hdr-transporter_document_date ',' "09/03/2020",'   y
+*                          '"vehicle_number":' lw_api_hdr-vehicle_number ',' "PQR1234",'        y
+*                          '"vehicle_type":' lw_api_hdr-vehicle_type  "R"'            y
+*                          '},' INTO lv_post SEPARATED BY ' '.
+
+
+    REFRESH IT_TEMP.
+    IT_TEMP  = LT_API_ITM.
+    DELETE IT_TEMP  WHERE DOCUMENT_NUMBER NE LW_API_HDR-DOCUMENT_NUMBER.
+
+
+    CONCATENATE : LV_POST '"item_list":' '['
+                           INTO LV_POST SEPARATED BY ' '.
+
+
+    LOOP AT IT_TEMP INTO LW_API_ITM WHERE  DOCUMENT_NUMBER EQ LW_API_HDR-DOCUMENT_NUMBER.
+
+      IF LW_API_ITM-UNIT IS INITIAL.
+        LW_API_ITM-UNIT = '" "'.
+      ENDIF.
+
+      IF SY-TABIX NE 1.
+        CONCATENATE LV_POST ',' INTO LV_POST.
+      ENDIF.
+
+      CONCATENATE : LV_POST  '{'
+                             '"item_serial_number":' LW_API_ITM-ITEM_SERIAL_NUMBER ',' "8965",'                y
+                             '"product_description":' LW_API_ITM-PRODUCT_DESCRIPTION ',' "Wheat desc",'
+                             '"is_service":' LW_API_ITM-IS_SERVICE ',' "N",'                                    y
+                             '"hsn_code":' LW_API_ITM-HSN_CODE ',' "1001",'                                     y
+**********                             '"bar_code":' lw_api_itm-bar_code ',' "1212",'
+                             '"quantity":' LW_API_ITM-QUANTITY ',' "1,'
+*                             '"free_quantity":' lw_api_itm-free_quantity ',' "0,'
+                             '"unit":' LW_API_ITM-UNIT ',' "KGS",'                                              Y
+                             '"unit_price":' LW_API_ITM-UNIT_PRICE ',' "1,'                                     y
+                             '"total_amount":' LW_API_ITM-TOTAL_AMOUNT ',' "1,'                                 y
+                             '"pre_tax_value":' LW_API_ITM-PRE_TAX_VALUE ',' "0,'
+                             '"discount":' LW_API_ITM-DISCOUNT ',' "0,'
+                             '"other_charge":' LW_API_ITM-OTHER_CHARGE ',' "0,'
+                             '"assessable_value":' LW_API_ITM-ASSESSABLE_VALUE ',' "1,'                           y
+                             '"gst_rate":' LW_API_ITM-GST_RATE ',' "0,'                                           y
+                             '"igst_amount":' LW_API_ITM-IGST_AMOUNT ',' "0,'
+                             '"cgst_amount":' LW_API_ITM-CGST_AMOUNT ',' "0,'
+                             '"sgst_amount":' LW_API_ITM-SGST_AMOUNT ',' "1,'
+                             '"cess_rate":' LW_API_ITM-CESS_RATE ',' "0,'
+                             '"cess_amount":' LW_API_ITM-CESS_AMOUNT ',' "0,'
+*Changed by Samarth as per MasterIndia
+*                             '"cess_nonadvol_value":' LW_API_ITM-CESS_NONADVOL_VALUE ',' " 0,'
+                             '"cess_nonadvol_amount":' LW_API_ITM-CESS_NONADVOL_VALUE ',' " 0,'
+*End of Change
+                             '"state_cess_rate":' LW_API_ITM-STATE_CESS_RATE ',' " 0,'
+                             '"state_cess_amount":' LW_API_ITM-STATE_CESS_AMOUNT ',' " 0,'
+                             '"state_cess_nonadvol_amount":' LW_API_ITM-STATE_CESS_NONADVOL_AMOUNT ',' "0,'
+                             '"total_item_value":' LW_API_ITM-TOTAL_ITEM_VALUE  "1,'                             y
+*                             '"country_origin":' lw_api_itm-country_origin ',' "52",'
+*                             '"order_line_reference":' lw_api_itm-order_line_reference ',' "5236",'
+*                             '"product_serial_number":' lw_api_itm-product_serial_number ',' "14785",'
+*                             '"batch details":' '{'
+*                             '"name":' lw_api_itm-name
+*                             '"expiry_date":' lw_api_itm-expiry_date ',' "2020-02-10",'
+*                             '"warranty_date":' lw_api_itm-warranty_date  "2020-02-20"'
+*                             '},'
+*                             '"attribute_details":' '[' '{'
+*                             '"item_attribute_details":' lw_api_itm-item_attribute_details ',' "aaa",'
+*                             '"item_attribute_value":' lw_api_itm-item_attribute_value "147852"'
+*                             '}'
+*                             ']'
+                             '}'
+
+                             INTO LV_POST SEPARATED BY ' '.
+
+
+    ENDLOOP.
+
+    CONCATENATE : LV_POST ']' INTO LV_POST SEPARATED BY ' '.
+    CONCATENATE : LV_POST   '}' INTO LV_POST SEPARATED BY ' '.
+
+    IF IM_API_DWN = 'X'.
+      CALL FUNCTION 'ZFM_EDOC_DOWNLOAD'
+        EXPORTING
+          IM_DATA = LV_POST.
+      EXIT.
+    ENDIF.
+
+    CL_HTTP_CLIENT=>CREATE_BY_URL(
+    EXPORTING
+          URL = LV_URL "'https://clientbasic.mastersindia.co/generateEinvoice'
+          IMPORTING
+          CLIENT = LO_HTTP_CLIENT
+          EXCEPTIONS
+          ARGUMENT_NOT_FOUND = 1
+          PLUGIN_NOT_ACTIVE = 2
+          INTERNAL_ERROR = 3
+          OTHERS = 4 ).
+    IF SY-SUBRC = 0.
+* Create REST Client
+      CREATE OBJECT LO_REST_CLIENT TYPE CL_REST_HTTP_CLIENT
+        EXPORTING
+          IO_HTTP_CLIENT = LO_HTTP_CLIENT.
+* Create REST entity Object
+      LO_REST_ENTITY = LO_REST_CLIENT->CREATE_REQUEST_ENTITY( ).
+
+
+      LO_REST_ENTITY->SET_CONTENT_TYPE( IF_REST_MEDIA_TYPE=>GC_APPL_JSON ).
+
+      CALL METHOD LO_REST_ENTITY->SET_STRING_DATA
+        EXPORTING
+          IV_DATA = LV_POST.
+      TRY.
+* POST request ( or call the web service )
+          LO_REST_CLIENT->POST( LO_REST_ENTITY ).
+        CATCH CX_REST_CLIENT_EXCEPTION INTO LR_REST_EXCEPTION.
+
+      ENDTRY.
+* Get Response entiry
+      LO_REST_ENTITY = LO_REST_CLIENT->GET_RESPONSE_ENTITY( ).
+
+*Get Respose XML as string
+      LV_STRING = LO_REST_ENTITY->GET_STRING_DATA( ).
+
+
+**  http return status
+      HTTP_STATUS  = LO_REST_ENTITY->GET_HEADER_FIELD( '~status_code' ).
+
+      IF  HTTP_STATUS EQ '200'.
+        EX_RETURN = 'S'.
+
+
+        SPLIT LV_STRING AT ':' INTO LV_EW1 LV_EW2.
+
+        REPLACE FIRST OCCURRENCE OF '{' IN LV_EW2 WITH SPACE.
+        LV_LENGTH1 = STRLEN( LV_EW2 ).
+        LV_LENGTH1 = LV_LENGTH1 - 1.
+        LV_EW2 = LV_EW2+0(LV_LENGTH1).
+
+
+        CALL METHOD CL_FDT_JSON=>JSON_TO_DATA
+          EXPORTING
+            IV_JSON = LV_EW2
+          CHANGING
+            CA_DATA = LS_OUTPUT.
+
+
+
+        CALL FUNCTION 'CONVERSION_EXIT_ALPHA_INPUT'
+          EXPORTING
+            INPUT  = LV_DOC
+          IMPORTING
+            OUTPUT = LV_DOC.
+
+
+        IF LS_OUTPUT-CODE = '204'.
+
+          LW_MESSAGE-TYPE = 'E'.
+          LW_MESSAGE-MESSAGE_V1 = LS_OUTPUT-ERRORMESSAGE.
+          LW_MESSAGE-MESSAGE_V2 = 'for document'.
+          LW_MESSAGE-MESSAGE_V3 = LV_DOC.
+
+          APPEND LW_MESSAGE TO EX_MESSAGES.
+
+          EX_RETURN =  'E'.
+          LW_INREF-IRN_STATUS = 'ERR'.
+
+          LW_INREF-ERNAM = SY-UNAME.
+          LW_INREF-ERDAT = SY-DATUM.
+          LW_INREF-ERZET = SY-UZEIT.
+
+          LW_INREF-BUKRS  = LW_API_HDR-BUKRS.
+          LW_INREF-DOC_YEAR = LW_API_HDR-DOC_YEAR.
+          LW_INREF-DOC_TYPE = LW_API_HDR-DOC_TYPE.
+          LW_INREF-DOCNO = LW_API_HDR-VBELN.
+          LW_INREF-ODN = LV_DOC.
+          APPEND LW_INREF TO EX_INVREF.
+          CLEAR LW_INREF.
+
+* Custom table update
+          LW_ZTEINV_DETAILS-BUKRS  = LW_API_HDR-BUKRS.
+          LW_ZTEINV_DETAILS-GJAHR = LW_API_HDR-DOC_YEAR.
+          LW_ZTEINV_DETAILS-DOCTYP = LW_API_HDR-DOC_TYPE.
+          LW_ZTEINV_DETAILS-DOCNO = LW_API_HDR-VBELN.
+          LW_ZTEINV_DETAILS-EINV_ERROR = LS_OUTPUT-ERRORMESSAGE.
+          LW_ZTEINV_DETAILS-ERNAM = SY-UNAME.
+          LW_ZTEINV_DETAILS-ERDAT = SY-DATUM.
+          APPEND LW_ZTEINV_DETAILS TO EX_EINV_DETAILS.
+          CONTINUE.
+
+
+        ELSEIF LS_OUTPUT-CODE = '200'.
+
+          LW_INREF-ACK_NO  = LS_OUTPUT-MESSAGE-ACKNO. " Ack no
+
+* Date
+          SPLIT  LS_OUTPUT-MESSAGE-ACKDT AT SPACE INTO LV_EW1 LV_EW2.
+          CONCATENATE LV_EW1+0(4) LV_EW1+5(2) LV_EW1+8(2) INTO LV_DATE.
+          LW_INREF-ACK_DATE = LV_DATE.
+          LW_INREF-IRN = LS_OUTPUT-MESSAGE-IRN.
+          LW_INREF-SIGNED_INV = LS_OUTPUT-MESSAGE-SIGNEDINVOICE.
+          LW_INREF-SIGNED_QRCODE = LS_OUTPUT-MESSAGE-SIGNEDQRCODE.
+******* extract status
+          LW_INREF-IRN_STATUS = 'ACT'.
+
+          LW_INREF-ERNAM = SY-UNAME.
+          LW_INREF-ERDAT = SY-DATUM.
+          LW_INREF-ERZET = SY-UZEIT.
+
+          LW_INREF-BUKRS  = LW_API_HDR-BUKRS.
+          LW_INREF-DOC_YEAR = LW_API_HDR-DOC_YEAR.
+          LW_INREF-DOC_TYPE = LW_API_HDR-DOC_TYPE.
+          LW_INREF-DOCNO = LW_API_HDR-VBELN.
+          LW_INREF-ODN = LV_DOC.
+
+
+          LW_MESSAGE-TYPE = 'S'.
+          LW_MESSAGE-MESSAGE_V1 = 'IRN successfully generated for document'.
+          LW_MESSAGE-MESSAGE_V2 = LV_DOC.
+          APPEND LW_MESSAGE TO EX_MESSAGES.
+
+          APPEND LW_INREF TO EX_INVREF.
+          CLEAR:LW_INREF.
+
+* Custom table update
+          LW_ZTEINV_DETAILS-BUKRS  = LW_API_HDR-BUKRS.
+          LW_ZTEINV_DETAILS-GJAHR = LW_API_HDR-DOC_YEAR.
+          LW_ZTEINV_DETAILS-DOCTYP = LW_API_HDR-DOC_TYPE.
+          LW_ZTEINV_DETAILS-DOCNO = LW_API_HDR-VBELN.
+          LW_ZTEINV_DETAILS-ERNAM = SY-UNAME.
+          LW_ZTEINV_DETAILS-ERDAT = SY-DATUM.
+          LW_ZTEINV_DETAILS-QRCODEURL = LS_OUTPUT-MESSAGE-QRCODEURL.
+          LW_ZTEINV_DETAILS-EINV_PDF = LS_OUTPUT-MESSAGE-EINVOICEPDF.
+
+          APPEND LW_ZTEINV_DETAILS TO EX_EINV_DETAILS.
+          CLEAR LW_ZTEINV_DETAILS.
+
+
+        ENDIF.
+
+
+
+*****        SPLIT  lv_string AT ',' INTO :  lv_ew lv_ew1 lv_ew2 lv_ew3 lv_ew4 lv_ew5 lv_ew6 lv_ew7 lv_ew8 lv_ew9 lv_ew10.
+*****        CLEAR: lv_ew5, lv_ew7,lv_ew8.
+*****        IF lv_ew1 CA 'errorMessage'.
+*****          SPLIT lv_ew1 AT ':' INTO lv_ew5 lv_ew7.
+******          SPLIT lv_ew7 AT ':' INTO lv_ew8 lv_ew9.
+*****
+*****
+*****          lw_message-type = 'E'.
+*****          lw_message-message_v1 = lv_ew7.
+*****          lw_message-message_v2 = 'for document'.
+*****          lw_message-message_v3 = lv_doc.
+*****
+*****          APPEND lw_message TO ex_messages.
+*****
+*****          ex_return =  'E'.
+*****          lw_inref-irn_status = 'ERR'.
+*****
+*****          lw_inref-ernam = sy-uname.
+*****          lw_inref-erdat = sy-datum.
+*****          lw_inref-erzet = sy-uzeit.
+*****
+*****          lw_inref-bukrs  = lw_api_hdr-bukrs.
+*****          lw_inref-doc_year = lw_api_hdr-doc_year.
+*****          lw_inref-doc_type = lw_api_hdr-doc_type.
+*****          lw_inref-docno = lw_api_hdr-vbeln.
+*****          lw_inref-odn = lv_doc.
+*****          APPEND lw_inref TO ex_invref.
+*****          CLEAR lw_inref.
+*****
+****** Custom table update
+*****          lw_zteinv_details-bukrs  = lw_api_hdr-bukrs.
+*****          lw_zteinv_details-gjahr = lw_api_hdr-doc_year.
+*****          lw_zteinv_details-doctyp = lw_api_hdr-doc_type.
+*****          lw_zteinv_details-docno = lw_api_hdr-vbeln.
+*****          lw_zteinv_details-einv_error = lv_ew1.
+*****          lw_zteinv_details-ernam = sy-uname.
+*****          lw_zteinv_details-erdat = sy-datum.
+*****          APPEND lw_zteinv_details TO ex_einv_details.
+*****          CONTINUE.
+*****
+*****        ENDIF.
+*****
+*****        IF lv_ew6 CA 'alert'.
+*****          REPLACE ALL OCCURRENCES OF SUBSTRING '"' IN lv_ew6 WITH ''.
+*****          SPLIT lv_ew6 AT ':' INTO lv_ew5 lv_ew7.
+*****          SPLIT lv_ew7 AT '.' INTO alert lv_ew8.
+*****          IF alert = 'IRN already generated on this document number'.
+*****
+******          MESSAGE 'IRN is already generated' TYPE 'E' DISPLAY LIKE 'E'.
+******            lw_inref-irn_status = 'Duplicate IRN'.
+******            lw_inref-ernam = sy-uname.
+******            lw_inref-erdat = sy-datum.
+******            lw_inref-erzet = sy-uzeit.
+******
+******            APPEND lw_inref TO ex_invref.
+******            CLEAR:lw_inref.
+*******          CONTINUE.
+*****            EXIT.
+*****
+*****          ENDIF.
+*****        ENDIF.
+*****
+*****        CLEAR: lv_ew5, lv_ew6, lv_ew7,lv_ew8.
+*******          EXTRACT irn.
+*****        SPLIT  lv_ew2 AT ':' INTO  : lv_ew5 lv_ew6.
+*****
+*****        REPLACE ALL OCCURRENCES OF SUBSTRING '"' IN lv_ew6 WITH ''.
+*****        lw_inref-irn = lv_ew6.
+*****        lv_irn = lv_ew6.
+*****        CLEAR: lv_ew5,  lv_ew6.
+*******           EXTRACT ACKNO
+*****        SPLIT  lv_ew AT ':' INTO : lv_ew5 lv_ew6 lv_ew8.
+*****        CLEAR: lv_ew5, lv_ew6.
+*****        SPLIT lv_ew8 AT ':' INTO lv_ew5 lv_ew6.
+*****        REPLACE ALL OCCURENCES OF SUBSTRING '"' IN lv_ew6 WITH ''.
+*****
+*****
+*****        lw_inref-docno = lv_doc.
+******        REPLACE ALL OCCURRENCES OF SUBSTRING '"' IN lv_token WITH ''.
+******      ex_invref-accs_token = lv_token.
+*****        lw_inref-ack_no  = lv_ew6. " Ack no
+*****
+*****        CLEAR: lv_ew5, lv_ew6, lv_ew8.
+*****        "EXTRACT ACTDT
+*****        REPLACE ALL OCCURRENCES OF SUBSTRING '"' IN lv_ew1 WITH ''.
+*****        SPLIT lv_ew1 AT ' ' INTO lv_ew5 lv_ew6.
+*****        CLEAR lv_ew6.
+*****        SPLIT lv_ew5 AT ':' INTO lv_ew6 lv_ew8.
+******           REPLACE ALL OCCURRENCES OF SUBSTRING '"' IN lv_ew8 WITH ''.
+*****        CONCATENATE lv_ew8+8(2) '.' lv_ew8+5(2) '.' lv_ew8(4) INTO lv_ew8.
+*****
+*****
+*****
+*****        CALL FUNCTION 'CONVERT_DATE_TO_INTERNAL'
+*****          EXPORTING
+*****            date_external            = lv_ew8
+******           ACCEPT_INITIAL_DATE      =
+*****          IMPORTING
+*****            date_internal            = lv_date
+*****          EXCEPTIONS
+*****            date_external_is_invalid = 1
+*****            OTHERS                   = 2.
+*****        IF sy-subrc <> 0.
+*****          MESSAGE 'Data Convertion is incomplete' TYPE 'E'.
+*****        ENDIF.
+*****
+*****        lw_inref-ack_date = lv_date.
+******
+*****        CLEAR: lv_ew5,lv_ew6,lv_ew8.
+************  extract signed invoice
+*****        REPLACE ALL OCCURRENCES OF SUBSTRING '"' IN lv_ew3 WITH ''.
+*****        SPLIT lv_ew3 AT ':' INTO :  lv_ew5 lv_ew8.
+*****        lw_inref-signed_inv = lv_ew8.
+*****        CLEAR: lv_ew5, lv_ew8.
+*****
+***********  extract QR code
+*****        REPLACE ALL OCCURRENCES OF SUBSTRING '"' IN lv_ew4 WITH ''.
+*****        SPLIT lv_ew4 AT ':' INTO : lv_ew5 lv_ew6.
+*****        lw_inref-signed_qrcode = lv_ew6.
+*****        CLEAR: lv_ew5, lv_ew6.
+*****
+************ extract status
+*****        lw_inref-irn_status = 'ACT'.
+*****
+*****        lw_inref-ernam = sy-uname.
+*****        lw_inref-erdat = sy-datum.
+*****        lw_inref-erzet = sy-uzeit.
+*****
+*****        lw_inref-bukrs  = lw_api_hdr-bukrs.
+*****        lw_inref-doc_year = lw_api_hdr-doc_year.
+*****        lw_inref-doc_type = lw_api_hdr-doc_type.
+*****        lw_inref-docno = lw_api_hdr-vbeln.
+*****        lw_inref-odn = lv_doc.
+*****
+*****
+*****
+*****        lw_message-type = 'S'.
+*****        lw_message-message_v1 = 'IRN successfully generated for document'.
+*****        lw_message-message_v2 = lv_doc.
+*****        APPEND lw_message TO ex_messages.
+*****
+*****        APPEND lw_inref TO ex_invref.
+*****        CLEAR:lw_inref.
+*****
+****** Custom table update
+*****        lw_zteinv_details-bukrs  = lw_api_hdr-bukrs.
+*****        lw_zteinv_details-gjahr = lw_api_hdr-doc_year.
+*****        lw_zteinv_details-doctyp = lw_api_hdr-doc_type.
+*****        lw_zteinv_details-docno = lw_api_hdr-vbeln.
+*****        lw_zteinv_details-ernam = sy-uname.
+*****        lw_zteinv_details-erdat = sy-datum.
+*****
+*****
+*****        APPEND lw_zteinv_details TO ex_einv_details.
+*****        CLEAR lw_zteinv_details.
+
+
+      ELSEIF HTTP_STATUS EQ '404'.
+        MESSAGE '404 Connection Refused Error' TYPE 'E'.
+
+
+      ELSE.
+        EX_RETURN =  'E'.
+
+
+
+
+      ENDIF.
+    ENDIF.
+
+  ENDLOOP.
+
+
+
+
+
+ENDFUNCTION.
